@@ -1,5 +1,5 @@
 /**
- * Sinon.JS 1.12.0, 2014/11/16
+ * Sinon.JS 1.12.1, 2014/11/16
  *
  * @author Christian Johansen (christian@cjohansen.no)
  * @author Contributors: https://github.com/cjohansen/Sinon.JS/blob/master/AUTHORS
@@ -3762,7 +3762,9 @@ if (typeof sinon == "undefined") {
 }
 
 (function (global) {
-    function makeApi(sinon) {
+    function makeApi(sinon, lol) {
+        var _lolex = typeof lolex !== "undefined" ? lolex : lol;
+
         sinon.useFakeTimers = function () {
             var now, methods = Array.prototype.slice.call(arguments);
 
@@ -3772,14 +3774,14 @@ if (typeof sinon == "undefined") {
                 now = methods.shift();
             }
 
-            var clock = lolex.install(now || 0, methods);
+            var clock = _lolex.install(now || 0, methods);
             clock.restore = clock.uninstall;
             return clock;
         };
 
         sinon.clock = {
             create: function (now) {
-                return lolex.createClock(now);
+                return _lolex.createClock(now);
             }
         };
 
@@ -3799,7 +3801,7 @@ if (typeof sinon == "undefined") {
 
     function loadDependencies(require, epxorts, module) {
         var sinon = require("./core");
-        makeApi(sinon);
+        makeApi(sinon, require("lolex"));
         module.exports = sinon;
     }
 
