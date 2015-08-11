@@ -1,12 +1,12 @@
 /**
- * Sinon.JS 1.8.0, 2014/02/02
+ * Sinon.JS 1.8.2, 2014/02/11
  *
  * @author Christian Johansen (christian@cjohansen.no)
  * @author Contributors: https://github.com/cjohansen/Sinon.JS/blob/master/AUTHORS
  *
  * (The BSD License)
  * 
- * Copyright (c) 2010-2013, Christian Johansen, christian@cjohansen.no
+ * Copyright (c) 2010-2014, Christian Johansen, christian@cjohansen.no
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without modification,
@@ -1312,7 +1312,7 @@ var sinon = (function (formatio) {
         },
 
         calledWithNew: function calledWithNew() {
-            return this.thisValue instanceof this.proxy;
+            return this.proxy.prototype && this.thisValue instanceof this.proxy;
         },
 
         calledBefore: function (other) {
@@ -3399,12 +3399,13 @@ if (typeof sinon == "undefined") {
 
 // wrapper for global
 (function(global) {
-
     if (typeof sinon === "undefined") {
         global.sinon = {};
     }
-    sinon.xhr = { XMLHttpRequest: global.XMLHttpRequest };
 
+    var supportsProgress = typeof ProgressEvent !== "undefined";
+    var supportsCustomEvent = typeof CustomEvent !== "undefined";
+    sinon.xhr = { XMLHttpRequest: global.XMLHttpRequest };
     var xhr = sinon.xhr;
     xhr.GlobalXMLHttpRequest = global.XMLHttpRequest;
     xhr.GlobalActiveXObject = global.ActiveXObject;
@@ -3660,7 +3661,9 @@ if (typeof sinon == "undefined") {
                     this.dispatchEvent(new sinon.Event("load", false, false, this));
                     this.dispatchEvent(new sinon.Event("loadend", false, false, this));
                     this.upload.dispatchEvent(new sinon.Event("load", false, false, this));
-                    this.upload.dispatchEvent(new ProgressEvent("progress", {loaded: 100, total: 100}));
+                    if (supportsProgress) {
+                        this.upload.dispatchEvent(new ProgressEvent("progress", {loaded: 100, total: 100}));
+                    }
                     break;
             }
         },
@@ -3818,18 +3821,22 @@ if (typeof sinon == "undefined") {
         },
 
         respond: function respond(status, headers, body) {
-            this.setResponseHeaders(headers || {});
             this.status = typeof status == "number" ? status : 200;
             this.statusText = FakeXMLHttpRequest.statusCodes[this.status];
+            this.setResponseHeaders(headers || {});
             this.setResponseBody(body || "");
         },
 
         uploadProgress: function uploadProgress(progressEventRaw) {
-            this.upload.dispatchEvent(new ProgressEvent("progress", progressEventRaw));
+            if (supportsProgress) {
+                this.upload.dispatchEvent(new ProgressEvent("progress", progressEventRaw));
+            }
         },
 
         uploadError: function uploadError(error) {
-            this.upload.dispatchEvent(new CustomEvent("error", {"detail": error}));
+            if (supportsCustomEvent) {
+                this.upload.dispatchEvent(new CustomEvent("error", {"detail": error}));
+            }
         }
     });
 
