@@ -1,5 +1,5 @@
 /**
- * Sinon.JS 0.7.1, 2010/10/16
+ * Sinon.JS 0.7.2, 2010/10/25
  *
  * @author Christian Johansen (christian@cjohansen.no)
  *
@@ -1065,6 +1065,40 @@ sinon.clock = (function () {
     return timers;
   }
 
+  function callbacksInRange(timeouts, from, to) {
+    var found, timer, tmp, i, l, timers = [], timeoutsCopy = {};
+
+    for (var prop in timeouts) {
+      timeoutsCopy[prop] = timeouts[prop];
+    }
+
+    while (timeoutsCopy && found !== 0) {
+      found = 0;
+      tmp = timersInRange(timeoutsCopy, from, to);
+
+      for (i = 0, l = tmp.length; i < l; i++) {
+        timer = tmp[i];
+
+        // Push a copy onto the call stack
+        timers.push({
+          func: timer.func,
+          callAt: timer.callAt,
+          interval: timer.interval,
+          id: timer.id
+        });
+
+        if (typeof timer.interval == "number") {
+          found += 1;
+          timer.callAt += timer.interval;
+        } else {
+          delete timeoutsCopy[timer.id];
+        }
+      }
+    }
+
+    return timers;
+  }
+
   function parseTime(str) {
     if (!str) {
       return 0;
@@ -1141,35 +1175,9 @@ sinon.clock = (function () {
 
     tick: function tick(ms) {
       ms = typeof ms == "number" ? ms : parseTime(ms);
-      var found, timer, prop, i, l;
       var tickFrom = this.now, tickTo = this.now + ms;
-      var tmp, timers = [];
 
-      while (this.timeouts && found !== 0) {
-        found = 0;
-        tmp = timersInRange(this.timeouts, tickFrom, tickTo);
-
-        for (i = 0, l = tmp.length; i < l; i++) {
-          timer = tmp[i];
-
-          // Push a copy onto the call stack
-          timers.push({
-            func: timer.func,
-            callAt: timer.callAt,
-            interval: timer.interval,
-            id: timer.id
-          });
-
-          if (typeof timer.interval == "number") {
-            found += 1;
-            timer.callAt += timer.interval;
-          } else {
-            delete this.timeouts[prop];
-          }
-        }
-      }
-
-      timers = timers.sort(function (a, b) {
+      var timers = callbacksInRange(this.timeouts, tickFrom, tickTo).sort(function (a, b) {
         return a.callAt < b.callAt ? -1 : (a.callAt > b.callAt ? 1 : 0);
       });
 
@@ -1944,6 +1952,10 @@ if (typeof module == "object" && typeof require == "function") {
       }
 
       return obj;
+    },
+
+    create: function () {
+      return sinon.create(sinon.sandbox);
     }
   });
 
