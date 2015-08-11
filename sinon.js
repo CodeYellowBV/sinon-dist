@@ -1,5 +1,5 @@
 /**
- * Sinon 0.7.0, 2010/09/19
+ * Sinon.JS 0.7.1, 2010/10/16
  *
  * @author Christian Johansen (christian@cjohansen.no)
  *
@@ -32,6 +32,16 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
+/*jslint indent: 2, eqeqeq: false, onevar: false, forin: true, nomen: false*/
+/*global module, require, __dirname*/
+/**
+ * Sinon core utilities. For internal use only.
+ *
+ * @author Christian Johansen (christian@cjohansen.no)
+ * @license BSD
+ *
+ * Copyright (c) 2010 Christian Johansen
+ */
 var sinon = (function () {
   return {
     wrapMethod: function wrapMethod(object, property, method) {
@@ -52,14 +62,10 @@ var sinon = (function () {
       }
 
       object[property] = method;
-      method.originalName = property;
+      method.displayName = property;
 
       method.restore = function () {
         object[property] = wrappedMethod;
-      };
-
-      method.toString = function () {
-        return sinon.fakeName(method);
       };
 
       return method;
@@ -143,22 +149,37 @@ var sinon = (function () {
       return objectKeys.sort();
     },
 
-    fakeName: function fakeName(method) {
-      if (method.originalName) {
-        return method.originalName;
+    functionName: function functionName(func) {
+      var name = func.displayName || func.name;
+
+      // Use function decomposition as a last resort to get function
+      // name. Does not rely on function decomposition to work - if it
+      // doesn't debugging will be slightly less informative
+      // (i.e. toString will say 'spy' rather than 'myFunc').
+      if (!name) {
+        var matches = func.toString().match(/function ([^\s\(]+)/);
+        name = matches && matches[1];
       }
 
-      if (method.getCall) {
-        var thisObj = method.getCall(method.callCount - 1).thisObj;
+      return name;
+    },
 
-        for (var prop in thisObj) {
-          if (thisObj[prop] === method) {
-            return prop;
+    functionToString: function toString() {
+      if (this.getCall && this.callCount) {
+        var thisObj, prop, i = this.callCount;
+
+        while (i--) {
+          thisObj = this.getCall(i).thisObj;
+
+          for (prop in thisObj) {
+            if (thisObj[prop] === this) {
+              return prop;
+            }
           }
         }
       }
 
-      return method.name || "sinon fake";
+      return this.displayName || "sinon fake";
     }
   };
 }());
@@ -250,8 +271,12 @@ if (typeof module == "object" && typeof require == "function") {
       callCount: 0,
 
       create: function create(func) {
+        var name;
+
         if (typeof func != "function") {
           func = function () {};
+        } else {
+          name = sinon.functionName(func);
         }
 
         function proxy() {
@@ -268,6 +293,8 @@ if (typeof module == "object" && typeof require == "function") {
         proxy.exceptions = [];
         proxy.callIds = [];
         proxy.prototype = func.prototype;
+        proxy.displayName = name || "spy";
+        proxy.toString = sinon.functionToString;
 
         return proxy;
       },
@@ -486,6 +513,8 @@ if (typeof module == "object" && typeof require == "function") {
         }
 
         sinon.extend(functionStub, stub);
+        functionStub.displayName = "stub";
+        functionStub.toString = sinon.functionToString;
 
         return functionStub;
       },
@@ -1650,12 +1679,30 @@ sinon.fakeServer = (function () {
     return [200, {}, strOrArray];
   }
 
-  function match(response, requestMethod, requestUrl) {
-    var matchMethod = !response.method || response.method.toLowerCase() == requestMethod.toLowerCase();
+  var wloc = window.location;
+  var rCurrLoc = new RegExp("^" + wloc.protocol + "//" + wloc.host);
+
+  function matchOne(response, requestMethod, requestUrl) {
+    var rmeth = response.method;
+    var matchMethod = !rmeth || rmeth.toLowerCase() == requestMethod.toLowerCase();
     var url = response.url;
     var matchUrl = !url || url == requestUrl || (typeof url.test == "function" && url.test(requestUrl));
 
     return matchMethod && matchUrl;
+  }
+
+  function match(response, requestMethod, requestUrl) {
+    if (matchOne(response, requestMethod, requestUrl)) {
+      return true;
+    }
+
+    if (!/^https?:\/\//.test(requestUrl) || rCurrLoc.test(requestUrl)) {
+      var strippedUrl = requestUrl.replace(rCurrLoc, "");
+
+      return matchOne(response, requestMethod, strippedUrl);
+    }
+
+    return false;
   }
 
   return {
