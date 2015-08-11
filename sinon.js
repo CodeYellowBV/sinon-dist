@@ -1,5 +1,5 @@
 /**
- * Sinon 0.6.1, 2010/08/12
+ * Sinon 0.6.2, 2010/08/12
  *
  * @author Christian Johansen (christian@cjohansen.no)
  *
@@ -1501,7 +1501,7 @@ sinon.fakeServer = (function () {
         this.resetClock = true;
       }
 
-      if (typeof this.longestTimeout != "number") {
+      if (!this.longestTimeout) {
         var clockSetTimeout = this.clock.setTimeout;
         var clockSetInterval = this.clock.setInterval;
         var server = this;
