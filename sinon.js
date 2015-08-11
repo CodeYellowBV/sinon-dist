@@ -1,5 +1,5 @@
 /**
- * Sinon.JS 1.10.1, 2014/05/30
+ * Sinon.JS 1.10.2, 2014/06/02
  *
  * @author Christian Johansen (christian@cjohansen.no)
  * @author Contributors: https://github.com/cjohansen/Sinon.JS/blob/master/AUTHORS
@@ -1593,6 +1593,7 @@ var sinon = (function (formatio) {
             push.call(this.args, args);
             push.call(this.callIds, callId++);
 
+            // Make call properties available from within the spied function:
             createCallProperties.call(this);
 
             try {
@@ -1612,6 +1613,9 @@ var sinon = (function (formatio) {
 
             push.call(this.exceptions, exception);
             push.call(this.returnValues, returnValue);
+
+            // Make return value and exception available in the calls:
+            createCallProperties.call(this);
 
             if (exception !== undefined) {
                 throw exception;
