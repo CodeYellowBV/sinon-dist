@@ -1,5 +1,5 @@
 /**
- * Sinon.JS 1.3.0, 2012/01/01
+ * Sinon.JS 1.3.1, 2012/01/04
  *
  * @author Christian Johansen (christian@cjohansen.no)
  *
@@ -309,7 +309,7 @@ var sinon = (function (buster) {
     var div = typeof document != "undefined" && document.createElement("div");
     var hasOwn = Object.prototype.hasOwnProperty;
 
-    function isNode(obj) {
+    function isDOMNode(obj) {
         var success = false;
 
         try {
@@ -329,7 +329,7 @@ var sinon = (function (buster) {
     }
 
     function isElement(obj) {
-        return div && obj && obj.nodeType === 1 && isNode(obj);
+        return div && obj && obj.nodeType === 1 && isDOMNode(obj);
     }
 
     function mirrorProperties(target, source) {
@@ -2278,7 +2278,7 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
     xhr.GlobalActiveXObject = global.ActiveXObject;
     xhr.supportsActiveX = typeof xhr.GlobalActiveXObject != "undefined";
     xhr.supportsXHR = typeof xhr.GlobalXMLHttpRequest != "undefined";
-    xhr.workingXHR = xhr.supportsXHR ? xhr.GlobalXMLHttpRequest : xhr.supportsActiveX 
+    xhr.workingXHR = xhr.supportsXHR ? xhr.GlobalXMLHttpRequest : xhr.supportsActiveX
                                      ? function() { return new xhr.GlobalActiveXObject("MSXML2.XMLHTTP.3.0") } : false;
 
     /*jsl:ignore*/
@@ -2325,7 +2325,7 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
             throw new Error("INVALID_STATE_ERR");
         }
     }
-    
+
     // filtering to enable a white-list version of Sinon FakeXhr,
     // where whitelisted requests are passed through to real XHR
     function each(collection, callback) {
@@ -2342,14 +2342,14 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
     }
     // largest arity in XHR is 5 - XHR#open
     var apply = function(obj,method,args) {
-      switch(args.length) {
+        switch(args.length) {
         case 0: return obj[method]();
         case 1: return obj[method](args[0]);
         case 2: return obj[method](args[0],args[1]);
         case 3: return obj[method](args[0],args[1],args[2]);
         case 4: return obj[method](args[0],args[1],args[2],args[3]);
         case 5: return obj[method](args[0],args[1],args[2],args[3],args[4]);
-      };
+        };
     };
 
     FakeXMLHttpRequest.filters = [];
@@ -2362,12 +2362,12 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
         each(["open","setRequestHeader","send","abort","getResponseHeader",
               "getAllResponseHeaders","addEventListener","overrideMimeType","removeEventListener"],
              function(method) {
-                 fakeXhr[method] = function() { 
+                 fakeXhr[method] = function() {
                    return apply(xhr,method,arguments);
                  };
              });
-        
-        var copyAttrs = function(args) { 
+
+        var copyAttrs = function(args) {
             each(args, function(attr) {
               try {
                 fakeXhr[attr] = xhr[attr]
@@ -2443,9 +2443,9 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
             if(sinon.FakeXMLHttpRequest.useFilters === true) {
                 var xhrArgs = arguments;
                 var defake = some(FakeXMLHttpRequest.filters,function(filter) {
-                        return filter.apply(this,xhrArgs)
-                    });
-                if(defake) sinon.FakeXMLHttpRequest.defake(this,arguments);
+                    return filter.apply(this,xhrArgs)
+                });
+                if (defake) { sinon.FakeXMLHttpRequest.defake(this,arguments); }
             } else {
                 this.readyStateChange(FakeXMLHttpRequest.OPENED);
             }
@@ -2680,7 +2680,7 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
         504: "Gateway Timeout",
         505: "HTTP Version Not Supported"
     };
-    
+
     sinon.useFakeXMLHttpRequest = function () {
         sinon.FakeXMLHttpRequest.restore = function restore(keepOnCreate) {
             if (xhr.supportsXHR) {
@@ -2714,7 +2714,7 @@ sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
 
         return sinon.FakeXMLHttpRequest;
     };
-    
+
     sinon.FakeXMLHttpRequest = FakeXMLHttpRequest;
 })(this);
 
