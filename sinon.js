@@ -1,5 +1,5 @@
 /**
- * Sinon.JS 0.7.2, 2010/10/25
+ * Sinon.JS 0.8.0, 2010/10/30
  *
  * @author Christian Johansen (christian@cjohansen.no)
  *
@@ -61,12 +61,23 @@ var sinon = (function () {
                             " as function");
       }
 
+      if (wrappedMethod.restore && wrappedMethod.restore.sinon) {
+        throw new TypeError("Attempted to wrap " + property + " which is already wrapped");
+      }
+
+      if (wrappedMethod.calledBefore) {
+        var verb = !!wrappedMethod.returns ? "stubbed" : "spied on";
+        throw new TypeError("Attempted to wrap " + property + " which is already " + verb);
+      }
+
       object[property] = method;
       method.displayName = property;
 
       method.restore = function () {
         object[property] = wrappedMethod;
       };
+
+      method.restore.sinon = true;
 
       return method;
     },
@@ -2036,19 +2047,20 @@ if (typeof module == "object" && typeof require == "function") {
       var config = getConfig();
       var sandbox = createSandbox(config);
       var exposed = sandbox.inject({});
-      var exception, result, prop;
+      var exception, result, prop, value;
       var args = Array.prototype.slice.call(arguments);
       var object = config.injectIntoThis && this || config.injectInto;
 
       if (config.properties) {
         for (var i = 0, l = config.properties.length; i < l; i++) {
           prop = config.properties[i];
+          value = exposed[prop] || prop == "sandbox" && sandbox
 
-          if (exposed[prop]) {
+          if (value) {
             if (object) {
-              object[prop] = exposed[prop];
+              object[prop] = value;
             } else {
-              args.push(exposed[config.properties[i]]);
+              args.push(value);
             }
           }
         }
