@@ -1,5 +1,5 @@
 /**
- * Sinon 0.5.0, 2010/06/09
+ * Sinon 0.6.0, 2010/08/10
  *
  * @author Christian Johansen (christian@cjohansen.no)
  *
@@ -30,7 +30,6 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
  */
 var sinon = (function () {
   return {
@@ -739,6 +738,8 @@ if (typeof module == "object" && typeof require == "function") {
       }
     };
   }());
+
+  sinon.mock = mock;
 }());
 
 (function () {
@@ -791,12 +792,34 @@ if (typeof module == "object" && typeof require == "function") {
       return fake;
     },
 
+    spy: function spy() {
+      return this.add(sinon.spy.apply(sinon, arguments));
+    },
+
     stub: function stub() {
       return this.add(sinon.stub.apply(sinon, arguments));
     },
 
     mock: function mock() {
       return this.add(sinon.mock.apply(sinon, arguments));
+    },
+
+    inject: function inject(obj) {
+      var col = this;
+
+      obj.spy = function () {
+        return col.spy.apply(col, arguments);
+      };
+
+      obj.stub = function () {
+        return col.stub.apply(col, arguments);
+      };
+
+      obj.mock = function () {
+        return col.mock.apply(col, arguments);
+      };
+
+      return obj;
     }
   };
 
@@ -966,6 +989,14 @@ sinon.clock = (function () {
   };
 }());
 
+sinon.timers = {
+  setTimeout: setTimeout,
+  clearTimeout: clearTimeout,
+  setInterval: setInterval,
+  clearInterval: clearInterval,
+  Date: Date
+};
+
 sinon.useFakeTimers = (function () {
   var global = this;
   var methods = ["setTimeout", "setInterval", "clearTimeout", "clearInterval"];
@@ -985,12 +1016,15 @@ sinon.useFakeTimers = (function () {
     global[method] = function () {
       return clock[method].apply(clock, arguments);
     };
+
+    global[method].clock = clock;
   }
 
   return function useFakeTimers(now) {
     var clock = sinon.clock.create(now);
     clock.restore = restore;
-    clock.methods = Array.prototype.slice.call(arguments, typeof now == "number" ? 1 : 0);
+    clock.methods = Array.prototype.slice.call(arguments,
+                                               typeof now == "number" ? 1 : 0);
 
     if (clock.methods.length === 0) {
       clock.methods = methods;
@@ -1002,6 +1036,715 @@ sinon.useFakeTimers = (function () {
 
     return clock;
   };
+}());
+
+sinon.xhr = { XMLHttpRequest: this.XMLHttpRequest };
+
+sinon.FakeXMLHttpRequest = (function () {
+  var unsafeHeaders = {
+    "Accept-Charset": true,
+    "Accept-Encoding": true,
+    "Connection": true,
+    "Content-Length": true,
+    "Cookie": true,
+    "Cookie2": true,
+    "Content-Transfer-Encoding": true,
+    "Date": true,
+    "Expect": true,
+    "Host": true,
+    "Keep-Alive": true,
+    "Referer": true,
+    "TE": true,
+    "Trailer": true,
+    "Transfer-Encoding": true,
+    "Upgrade": true,
+    "User-Agent": true,
+    "Via": true
+  };
+
+  function FakeXMLHttpRequest() {
+    this.readyState = FakeXMLHttpRequest.UNSENT;
+    this.requestHeaders = {};
+    this.requestBody = null;
+    this.status = 0;
+    this.statusText = "";
+
+    if (typeof FakeXMLHttpRequest.onCreate == "function") {
+      FakeXMLHttpRequest.onCreate(this);
+    }
+  }
+
+  function verifyState(xhr) {
+    if (xhr.readyState !== FakeXMLHttpRequest.OPENED) {
+      throw new Error("INVALID_STATE_ERR");
+    }
+
+    if (xhr.sendFlag) {
+      throw new Error("INVALID_STATE_ERR");
+    }
+  }
+
+  sinon.extend(FakeXMLHttpRequest.prototype, {
+    async: true,
+
+    open: function open(method, url, async, username, password) {
+      this.method = method;
+      this.url = url;
+      this.async = typeof async == "boolean" ? async : true;
+      this.username = username;
+      this.password = password;
+      this.responseText = null;
+      this.responseXML = null;
+      this.requestHeaders = {};
+      this.sendFlag = false;
+      this.readyStateChange(FakeXMLHttpRequest.OPENED);
+    },
+
+    readyStateChange: function readyStateChange(state) {
+      this.readyState = state;
+
+      if (typeof this.onreadystatechange == "function") {
+        this.onreadystatechange();
+      }
+    },
+
+    setRequestHeader: function setRequestHeader(header, value) {
+      verifyState(this);
+
+      if (unsafeHeaders[header] || /^(Sec-|Proxy-)/.test(header)) {
+        throw new Error("Refused to set unsafe header \"" + header + "\"");
+      }
+
+      if (this.requestHeaders[header]) {
+        this.requestHeaders[header] += "," + value; 
+      } else {
+        this.requestHeaders[header] = value;
+      }
+    },
+
+    // Helps testing
+    setResponseHeaders: function setResponseHeaders(headers) {
+      this.responseHeaders = {};
+
+      for (var header in headers) {
+        if (headers.hasOwnProperty(header)) {
+          this.responseHeaders[header.toLowerCase()] = headers[header];
+        }
+      }
+
+      if (this.async) {
+        this.readyStateChange(FakeXMLHttpRequest.HEADERS_RECEIVED);
+      }
+    },
+
+    // Currently treats ALL data as a DOMString (i.e. no Document)
+    send: function send(data) {
+      verifyState(this);
+
+      if (!/^(get|head)$/i.test(this.method)) {
+        if (this.requestHeaders["Content-Type"]) {
+          var value = this.requestHeaders["Content-Type"].split(";");
+          this.requestHeaders["Content-Type"] = value[0] + ";charset=utf-8";
+        } else {
+          this.requestHeaders["Content-Type"] = "text/plain;charset=utf-8";
+        }
+
+        this.requestBody = data;
+      }
+
+      this.errorFlag = false;
+      this.sendFlag = this.async;
+      this.readyStateChange(FakeXMLHttpRequest.OPENED);
+
+      if (typeof this.onSend == "function") {
+        this.onSend(this);
+      }
+    },
+
+    abort: function abort() {
+      this.aborted = true;
+      this.responseText = null;
+      this.errorFlag = true;
+      this.requestHeaders = {};
+
+      if (this.readyState > sinon.FakeXMLHttpRequest.OPENED) {
+        this.readyStateChange(sinon.FakeXMLHttpRequest.DONE);
+        this.sendFlag = false;
+      }
+
+      this.readyState = sinon.FakeXMLHttpRequest.UNSENT;
+    },
+
+    getResponseHeader: function getResponseHeader(header) {
+      if (this.readyState < FakeXMLHttpRequest.HEADERS_RECEIVED) {
+        return null;
+      }
+
+      if (/^Set-Cookie2?$/i.test(header)) {
+        return null;
+      }
+
+      return this.responseHeaders[header.toLowerCase()];
+    },
+
+    getAllResponseHeaders: function getAllResponseHeaders() {
+      if (this.readyState < FakeXMLHttpRequest.HEADERS_RECEIVED) {
+        return null;
+      }
+
+      var headers = {};
+
+      for (var header in this.responseHeaders) {
+        if (this.responseHeaders.hasOwnProperty(header) &&
+            !/^Set-Cookie2?$/i.test(header)) {
+          headers[header] = this.responseHeaders[header];
+        }
+      }
+
+      return headers;
+    },
+
+    setResponseBody: function setResponseBody(body) {
+      if (this.readyState == FakeXMLHttpRequest.DONE) {
+        throw new Error("Request done");
+      }
+
+      if (this.async && this.readyState != FakeXMLHttpRequest.HEADERS_RECEIVED) {
+        throw new Error("No headers received");
+      }
+
+      var chunkSize = this.chunkSize || 10;
+      var index = 0;
+      this.responseText = "";
+
+      do {
+        if (this.async) {
+          this.readyStateChange(FakeXMLHttpRequest.LOADING);
+        }
+
+        this.responseText += body.substring(index, index + chunkSize);
+        index += chunkSize;
+      } while (index < body.length);
+
+      var type = this.getResponseHeader("Content-Type");
+
+      if (this.responseText &&
+          (!type || /(text\/xml)|(application\/xml)|(\+xml)/.test(type))) {
+        this.responseXML = FakeXMLHttpRequest.parseXML(this.responseText);
+      }
+
+      if (this.async) {
+        this.readyStateChange(FakeXMLHttpRequest.DONE);
+      } else {
+        this.readyState = FakeXMLHttpRequest.DONE;
+      }
+    },
+
+    respond: function respond(status, headers, body) {
+      this.setResponseHeaders(headers || {});
+      this.status = typeof status == "number" ? status : 200;
+      this.statusText = FakeXMLHttpRequest.statusCodes[this.status];
+      this.setResponseBody(body || "");
+    }
+  });
+
+  sinon.extend(FakeXMLHttpRequest, {
+    UNSENT: 0,
+    OPENED: 1,
+    HEADERS_RECEIVED: 2,
+    LOADING: 3,
+    DONE: 4
+  });
+
+  // Borrowed from JSpec
+  FakeXMLHttpRequest.parseXML = function parseXML(text) {
+    var xmlDoc;
+
+    if (typeof DOMParser != "undefined") {
+      var parser = new DOMParser();
+      xmlDoc = parser.parseFromString(text, "text/xml");
+    } else {
+      xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+      xmlDoc.async = "false";
+      xmlDoc.loadXML(text);
+    }
+
+    return xmlDoc;
+  };
+
+  FakeXMLHttpRequest.statusCodes = {
+    100: "Continue",
+    101: "Switching Protocols",
+    200: "OK",
+    201: "Created",
+    202: "Accepted",
+    203: "Non-Authoritative Information",
+    204: "No Content",
+    205: "Reset Content",
+    206: "Partial Content",
+    300: "Multiple Choice",
+    301: "Moved Permanently",
+    302: "Found",
+    303: "See Other",
+    304: "Not Modified",
+    305: "Use Proxy",
+    307: "Temporary Redirect",
+    400: "Bad Request",
+    401: "Unauthorized",
+    402: "Payment Required",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    406: "Not Acceptable",
+    407: "Proxy Authentication Required",
+    408: "Request Timeout",
+    409: "Conflict",
+    410: "Gone",
+    411: "Length Required",
+    412: "Precondition Failed",
+    413: "Request Entity Too Large",
+    414: "Request-URI Too Long",
+    415: "Unsupported Media Type",
+    416: "Requested Range Not Satisfiable",
+    417: "Expectation Failed",
+    422: "Unprocessable Entity",
+    500: "Internal Server Error",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout",
+    505: "HTTP Version Not Supported"
+  };
+
+  return FakeXMLHttpRequest;
+}());
+
+(function (global) {
+  var GlobalXMLHttpRequest = global.XMLHttpRequest;
+  var GlobalActiveXObject = global.ActiveXObject;
+  var supportsActiveX = typeof ActiveXObject != "undefined";
+  var supportsXHR = typeof XMLHttpRequest != "undefined";
+
+  sinon.useFakeXMLHttpRequest = function () {
+    sinon.FakeXMLHttpRequest.restore = function restore(keepOnCreate) {
+      if (supportsXHR) {
+        global.XMLHttpRequest = GlobalXMLHttpRequest;
+      }
+
+      if (supportsActiveX) {
+        global.ActiveXObject = GlobalActiveXObject;
+      }
+
+      delete sinon.FakeXMLHttpRequest.restore;
+
+      if (keepOnCreate !== true) {
+        delete sinon.FakeXMLHttpRequest.onCreate;
+      }
+    };
+
+    if (supportsXHR) {
+      global.XMLHttpRequest = sinon.FakeXMLHttpRequest;
+    }
+
+    if (supportsActiveX) {
+      global.ActiveXObject = function ActiveXObject(objId) {
+        if (objId == "Microsoft.XMLHTTP" || /^Msxml2\.XMLHTTP/.test(objId)) {
+          return new sinon.FakeXMLHttpRequest();
+        }
+
+        return new GlobalActiveXObject(objId);
+      };
+    }
+
+    return sinon.FakeXMLHttpRequest;
+  };
+}(this));
+
+sinon.fakeServer = (function () {
+  function F() {}
+
+  function create(proto) {
+    F.prototype = proto;
+    return new F();
+  }
+
+  function responseArray(strOrArray) {
+    if (Object.prototype.toString.call(strOrArray) == "[object Array]") {
+      return strOrArray;
+    }
+
+    return [200, {}, strOrArray];
+  }
+
+  function match(response, requestMethod, requestUrl) {
+    var matchMethod = !response.method || response.method.toLowerCase() == requestMethod.toLowerCase();
+    var url = response.url;
+    var matchUrl = !url || url == requestUrl || (typeof url.test == "function" && url.test(requestUrl));
+
+    return matchMethod && matchUrl;
+  }
+
+  return {
+    create: function () {
+      var server = create(this);
+      this.xhr = sinon.useFakeXMLHttpRequest();
+      server.requests = [];
+
+      this.xhr.onCreate = function (xhrObj) {
+        server.addRequest(xhrObj);
+      };
+
+      return server;
+    },
+
+    addRequest: function addRequest(xhrObj) {
+      var server = this;
+      this.requests.push(xhrObj);
+
+      xhrObj.onSend = function () {
+        server.handleRequest(this);
+      };
+    },
+
+    getHTTPMethod: function getHTTPMethod(request) {
+      if (this.fakeHTTPMethods && /post/i.test(request.method)) {
+        var match = request.requestBody.match(/_method=([^\b;]+)/);
+        return !!match ? match[1] : request.method;
+      }
+
+      return request.method;
+    },
+
+    handleRequest: function handleRequest(xhr) {
+      if (xhr.async) {
+        if (!this.queue) {
+          this.queue = [];
+        }
+
+        this.queue.push(xhr);
+      } else {
+        this.processRequest(xhr);
+      }
+    },
+
+    respondWith: function respondWith(method, url, body) {
+      if (arguments.length == 1) {
+        this.response = responseArray(method);
+      } else {
+        if (!this.responses) {
+          this.responses = [];
+        }
+
+        if (arguments.length == 2) {
+          body = url;
+          url = method;
+          method = null;
+        }
+
+        this.responses.push({
+          method: method,
+          url: url,
+          response: responseArray(body)
+        });
+      }
+    },
+
+    respond: function respond() {
+      var queue = this.queue || [];
+
+      for (var i = 0, l = queue.length; i < l; i++) {
+        this.processRequest(queue[i]);
+      }
+
+      this.queue = [];
+    },
+
+    processRequest: function processRequest(request) {
+      try {
+        if (request.aborted) {
+          return;
+        }
+
+        var response = this.response || [404, {}, ""];
+
+        if (this.responses) {
+          for (var i = 0, l = this.responses.length; i < l; i++) {
+            if (match(this.responses[i], this.getHTTPMethod(request), request.url)) {
+              response = this.responses[i].response;
+              break;
+            }
+          }
+        }
+
+        request.respond(response[0], response[1], response[2]);
+      } catch (e) {}
+    },
+
+    restore: function restore() {
+      return this.xhr.restore && this.xhr.restore.apply(this.xhr, arguments);
+    }
+  };
+}());
+
+(function () {
+  function Server() {}
+  Server.prototype = sinon.fakeServer;
+
+  sinon.fakeServerWithClock = new Server();
+
+  sinon.fakeServerWithClock.addRequest = function addRequest(xhr) {
+    if (xhr.async) {
+      if (typeof setTimeout.clock == "object") {
+        this.clock = setTimeout.clock;
+      } else {
+        this.clock = sinon.useFakeTimers();
+        this.resetClock = true;
+      }
+
+      if (typeof this.longestTimeout != "number") {
+        var clockSetTimeout = this.clock.setTimeout;
+        var clockSetInterval = this.clock.setInterval;
+        var server = this;
+
+        this.clock.setTimeout = function (fn, timeout) {
+          server.longestTimeout = Math.max(timeout, server.longestTimeout || 0);
+
+          return clockSetTimeout.apply(this, arguments);
+        };
+
+        this.clock.setInterval = function (fn, timeout) {
+          server.longestTimeout = Math.max(timeout, server.longestTimeout || 0);
+
+          return clockSetInterval.apply(this, arguments);
+        };
+      }
+    }
+
+    return sinon.fakeServer.addRequest.call(this, xhr);
+  };
+
+  sinon.fakeServerWithClock.respond = function respond() {
+    if (this.clock) {
+      this.clock.tick(this.longestTimeout);
+      this.longestTimeout = 0;
+
+      if (this.resetClock) {
+        this.clock.restore();
+        this.resetClock = false;
+      }
+    }
+
+    return sinon.fakeServer.respond.apply(this, arguments);
+  };
+
+  sinon.fakeServerWithClock.restore = function restore() {
+    if (this.clock) {
+      this.clock.restore();
+    }
+
+    return sinon.fakeServer.restore.apply(this, arguments);
+  };
+}());
+
+(function () {
+  sinon.sandbox = sinon.extend(sinon.create(sinon.collection), {
+    useFakeTimers: function useFakeTimers() {
+      this.clock = sinon.useFakeTimers.apply(sinon, arguments);
+
+      return this.add(this.clock);
+    },
+
+    serverPrototype: sinon.fakeServer,
+
+    useFakeServer: function useFakeServer() {
+      this.server = (this.serverPrototype || sinon.fakeServer).create();
+
+      return this.add(this.server);
+    },
+
+    inject: function (obj) {
+      sinon.collection.inject.call(this, obj);
+
+      if (this.clock) {
+        obj.clock = this.clock;
+      }
+
+      if (this.server) {
+        obj.server = this.server;
+        obj.requests = this.server.requests;
+      }
+
+      return obj;
+    }
+  });
+
+  sinon.sandbox.useFakeXMLHttpRequest = sinon.sandbox.useFakeServer;
+}());
+
+(function () {
+  function createSandbox() {
+    var sandbox = sinon.create(sinon.sandbox);
+    var config = sinon.config || {};
+
+    if (config.useFakeServer) {
+      sandbox.useFakeServer();
+    }
+
+    if (config.useFakeTimers) {
+      sandbox.useFakeTimers();
+    }
+
+    return sandbox;
+  }
+
+  function getConfig() {
+    var config = {};
+    var sConf = sinon.config || {};
+    var tConf = sinon.test.config;
+
+    for (var prop in sinon.test.config) {
+      if (tConf.hasOwnProperty(prop)) {
+        config[prop] = sConf.hasOwnProperty(prop) ? sConf[prop] : tConf[prop];
+      }
+    }
+
+    return config;
+  }
+
+  function test(callback) {
+    return function () {
+      var sandbox = createSandbox();
+      var exposed = sandbox.inject({});
+      var exception, result, prop;
+      var args = Array.prototype.slice.call(arguments);
+      var config = getConfig();
+      var object = config.injectIntoThis && this || config.injectInto;
+
+      if (config.properties) {
+        for (var i = 0, l = config.properties.length; i < l; i++) {
+          prop = config.properties[i];
+
+          if (exposed[prop]) {
+            if (object) {
+              object[prop] = exposed[prop];
+            } else {
+              args.push(exposed[config.properties[i]]);
+            }
+          }
+        }
+      } else {
+        if (object) {
+          object.sandbox = exposed;
+        } else {
+          args.push(exposed);
+        }
+      }
+
+      try {
+        result = callback.apply(this, args);
+      } catch (e) {
+        exception = e;
+      }
+
+      sandbox.verifyAndRestore();
+
+      if (exception) {
+        throw exception;
+      }
+
+      return result;
+    };
+  }
+
+  test.config = {
+    injectIntoThis: true,
+    injectInto: null,
+    properties: ["spy", "stub", "mock", "clock", "server", "requests"],
+    useFakeTimers: false,
+    useFakeServer: false
+  };
+
+  sinon.test = test;
+}());
+
+(function () {
+  function createTest(property, setUp, tearDown) {
+    return function () {
+      if (setUp) {
+        setUp.apply(this, arguments);
+      }
+
+      var exception;
+
+      try {
+        property.apply(this, arguments);
+      } catch (e) {
+        exception = e;
+      }
+
+      if (tearDown) {
+        tearDown.apply(this, arguments);
+      }
+
+      if (exception) {
+        throw exception;
+      }
+    };
+  }
+
+  function testCase(tests, prefix) {
+    var methods = {};
+    var property, testName, nested, name, context;
+
+    if (!tests) {
+      throw new TypeError("test case object is null");
+    }
+
+    if (typeof prefix == "undefined") {
+      prefix = "test ";
+    }
+
+    var setUp = tests.setUp;
+    var tearDown = tests.tearDown;
+    var method;
+
+    for (testName in tests) {
+      if (tests.hasOwnProperty(testName)) {
+        property = tests[testName];
+
+        if (/^(setUp|tearDown)$/.test(testName)) {
+          continue;
+        }
+
+        if (typeof property == "function" && !/^test/.test(testName)) {
+          testName = prefix + testName;
+        }
+
+        if (typeof property == "object") {
+          nested = testCase(property, "");
+          context = prefix + testName + " ";
+
+          for (name in nested) {
+            if (nested.hasOwnProperty(name)) {
+              methods[context + name] = nested[name];
+            }
+          }
+        } else {
+          method = property;
+
+          if (setUp || tearDown) {
+            method = createTest(property, setUp, tearDown);
+          }
+
+          methods[testName] = sinon.test(method);
+        }
+      }
+    }
+
+    return methods;
+  }
+
+  sinon.testCase = testCase;
 }());
 
 (function () {
@@ -1114,120 +1857,4 @@ sinon.useFakeTimers = (function () {
   mirrorAssertion("alwaysThrew", "%0 did not always throw exception");
 
   sinon.assert = assert;
-}());
-
-(function () {
-  function createTest(property, setUp, tearDown) {
-    return function () {
-      if (setUp) {
-        setUp.apply(this, arguments);
-      }
-
-      var exception;
-
-      try {
-        property.apply(this, arguments);
-      } catch (e) {
-        exception = e;
-      }
-
-      if (tearDown) {
-        tearDown.apply(this, arguments);
-      }
-
-      if (exception) {
-        throw exception;
-      }
-    };
-  }
-
-  function testCase(tests, prefix) {
-    var methods = {};
-    var property, testName, nested, name, context;
-
-    if (!tests) {
-      throw new TypeError("test case object is null");
-    }
-
-    if (typeof prefix == "undefined") {
-      prefix = "test ";
-    }
-
-    var setUp = tests.setUp;
-    var tearDown = tests.tearDown;
-    var method;
-
-    for (testName in tests) {
-      if (tests.hasOwnProperty(testName)) {
-        property = tests[testName];
-
-        if (/^(setUp|tearDown)$/.test(testName)) {
-          continue;
-        }
-
-        if (typeof property == "function" && !/^test/.test(testName)) {
-          testName = prefix + testName;
-        }
-
-        if (typeof property == "object") {
-          nested = testCase(property, "");
-          context = prefix + testName + " ";
-
-          for (name in nested) {
-            if (nested.hasOwnProperty(name)) {
-              methods[context + name] = nested[name];
-            }
-          }
-        } else {
-          method = property;
-
-          if (setUp || tearDown) {
-            method = createTest(property, setUp, tearDown);
-          }
-
-          methods[testName] = sinon.test(method);
-        }
-      }
-    }
-
-    return methods;
-  }
-
-  sinon.testCase = testCase;
-}());
-
-sinon.sandbox = sinon.extend(sinon.create(sinon.collection), {
-  useFakeTimers: function useFakeTimers() {
-    this.clock = sinon.useFakeTimers.apply(sinon, arguments);
-
-    return this.add(this.clock);
-  }
-});
-
-(function () {
-  sinon.test = function test(callback) {
-    return function () {
-      var collection = sinon.create(sinon.collection);
-      var exception, result;
-      var realArgs = Array.prototype.slice.call(arguments);
-
-      try {
-        result = callback.apply(this, realArgs.concat([function () {
-          return collection.stub.apply(collection, arguments);
-        }, function () {
-          return collection.mock.apply(collection, arguments);
-        }]));
-      } catch (e) {
-        exception = e;
-      }
-
-      collection.verifyAndRestore();
-
-      if (exception) {
-        throw exception;
-      }
-
-      return result;
-    };
-  };
 }());
