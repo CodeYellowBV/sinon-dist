@@ -1,5 +1,5 @@
 /**
- * Sinon.JS 1.10.0, 2014/05/19
+ * Sinon.JS 1.10.1, 2014/05/30
  *
  * @author Christian Johansen (christian@cjohansen.no)
  * @author Contributors: https://github.com/cjohansen/Sinon.JS/blob/master/AUTHORS
@@ -4111,15 +4111,6 @@ sinon.fakeServer = (function () {
         return false;
     }
 
-    function log(response, request) {
-        var str;
-
-        str =  "Request:\n"  + sinon.format(request)  + "\n\n";
-        str += "Response:\n" + sinon.format(response) + "\n\n";
-
-        sinon.log(str);
-    }
-
     return {
         create: function () {
             var server = create(this);
@@ -4170,6 +4161,15 @@ sinon.fakeServer = (function () {
             } else {
                 this.processRequest(xhr);
             }
+        },
+
+        log: function(response, request) {
+            var str;
+
+            str =  "Request:\n"  + sinon.format(request)  + "\n\n";
+            str += "Response:\n" + sinon.format(response) + "\n\n";
+
+            sinon.log(str);
         },
 
         respondWith: function respondWith(method, url, body) {
@@ -4227,7 +4227,7 @@ sinon.fakeServer = (function () {
                 }
 
                 if (request.readyState != 4) {
-                    log(response, request);
+                    sinon.fakeServer.log(response, request);
 
                     request.respond(response[0], response[1], response[2]);
                 }
@@ -4508,7 +4508,7 @@ if (typeof module !== "undefined" && module.exports && typeof require == "functi
             throw new TypeError("sinon.test needs to wrap a test function, got " + type);
         }
 
-        return function () {
+        function sinonSandboxedTest() {
             var config = sinon.getConfig(sinon.config);
             config.injectInto = config.injectIntoThis && this || config.injectInto;
             var sandbox = sinon.sandbox.create(config);
@@ -4531,6 +4531,14 @@ if (typeof module !== "undefined" && module.exports && typeof require == "functi
 
             return result;
         };
+
+        if (callback.length) {
+            return function sinonAsyncSandboxedTest(callback) {
+                return sinonSandboxedTest.apply(this, arguments);
+            };
+        }
+
+        return sinonSandboxedTest;
     }
 
     test.config = {
