@@ -3,6 +3,11 @@
 This repository contains standalone builds of [Sinon.js](http://sinonjs.org/),
 ready to be used. All builds are directly fetched from sinonjs.org and tagged.
 
+**Note**: It appears that the official sinon package already contains standalone
+builds (https://github.com/cjohansen/Sinon.JS/issues/805#issuecomment-130176807).
+These are available since 1.3.0, and stored in the `node_modules/sinon/pkg/`
+directory after installation via `npm install sinon`.
+
 ## Installation
 
 Via [npm](https://docs.npmjs.com/):
@@ -28,7 +33,7 @@ npm install sinon-dist --save-dev
 ### Web page
 
 ```html
-<script src="node_modules/sinon.js"></script>
+<script src="node_modules/sinon/sinon.js"></script>
 <!-- TODO: Use sinon API! -->
 ```
 
@@ -36,7 +41,7 @@ npm install sinon-dist --save-dev
 
 ```js
 require.config({
-    sinon: 'node_modules/sinon'
+    sinon: 'node_modules/sinon/sinon.js'
 });
 require(['sinon'], function(sinon) {
     // TODO: use sinon API!
